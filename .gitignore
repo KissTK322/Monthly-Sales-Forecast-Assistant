@@ -1,0 +1,18 @@
+# real client data and private inputs — never commit
+private-data/
+reference/
+*.xlsx
+*.xls
+*.xlsm
+
+# CSV is the client's real export format: block it everywhere,
+# then allow only the generated synthetic fixtures.
+*.csv
+!tests/fixtures/**/*.csv
+
+# tools and outputs
+node_modules/
+test-results/
+playwright-report/
+.DS_Store
+Thumbs.db
