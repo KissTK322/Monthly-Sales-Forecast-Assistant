@@ -36,6 +36,8 @@ Chosen on the welcome screen before any sales data is shown. Each passcode is ha
 | **Management** | Everything Supervisor has, plus the Data & backup tab: import Express CSVs, download/restore JSON backups, and manage products/customers/salespeople. 12+ character passcode. |
 | **Tech Team** | A single "Password support" screen to reset the Supervisor, Management, or an individual salesperson's passcode on that browser. It has no access to any sales, product, or customer data — resetting a passcode does not reveal it. |
 
+![Welcome screen with the Supervisor password-setup dialog open](docs/screenshots/welcome-role-password-setup.png)
+
 ## 3. Importing data
 
 Only the **Management** role can import. From the **Data & backup** tab, use "Import CSV from Express" and select the three report files together (or add more later — see below).
@@ -72,16 +74,31 @@ Product group codes are matched against a small built-in name table; a group not
 
 The app is an installable PWA (`manifest.webmanifest`, versioned service worker in `sw.js`).
 
-- **iPhone / iPad (Safari):** Share → Add to Home Screen.
-- **Android / Windows / Mac (Chrome or Edge):** use the install icon in the address bar, or the browser menu.
-- **Mac (Safari):** File menu → Add to Dock.
+**In the app itself**, the gear icon (⚙, top-right of the header) opens Settings, which has an **"Install / App"** section. On Windows/Android/Chrome/Edge, once the browser is ready to install the page, an **"Install"** button appears there — pressing it is the same as using the browser's own install icon in the address bar. The panel also shows the current app version and switches to step-by-step text automatically when no one-click install button is available on that browser (see below).
+
+- **iPhone / iPad (Safari):** there is no in-page install button — use Safari's own Share icon → **Add to Home Screen** → Add. The app icon then appears on the Home Screen like a normal app.
+- **Android (Chrome):** use the **Install** button in Settings (⚙) described above, or Chrome's own install icon in the address bar, or Chrome's ⋮ menu → **Install app**.
+- **Windows (Edge or Chrome):** use the **Install** button in Settings (⚙), or the install icon at the right side of the browser's address bar.
+- **Mac (Safari):** Safari has no install prompt — use the **File** menu → **Add to Dock**.
+- **Mac (Chrome):** same as Windows above.
+
+![Settings panel showing the Install / App section and the current app version](docs/screenshots/settings-install-panel.png)
 
 After the first visit, the app shell loads offline. When a new version is deployed, a "Reload" banner appears instead of silently switching versions underneath you. An offline badge shows when the browser has no network connection.
 
 ## 6. Privacy and data storage
 
 - CSV files are read from disk with the browser's File API and never leave the device — there is no backend, no analytics, and no runtime dependency on any external service.
-- On every page load the app starts from its own built-in sample dataset and actively clears any old locally-stored dataset from earlier versions. Data you import lives only in that browser tab for the session unless you explicitly choose **"Save on this device"** (kept in `localStorage`) or **"Download data backup"** (a JSON file you keep yourself) from the Data & backup tab.
+- On every page load the app starts from its own built-in sample dataset and actively clears any old locally-stored dataset from earlier versions. Data you import lives only in that browser tab for the session unless you explicitly save it — see below.
+
+### Saving your data to your computer
+
+Only Management sees this, on the **Data & backup** tab:
+
+- **"Download data backup"** — saves everything (parsed sales, products, customers, deposits and edited stock figures) as one `.json` file through the browser's normal download, the same as downloading any other file — it lands in your Downloads folder, or wherever your browser is set to save downloads. Keep this after every import you approve; view filters reset but the underlying data does not.
+- **"Save on this device"** — keeps the same data in this browser's own storage (`localStorage`) so it survives closing the tab, without producing a file. It does not survive clearing browser data, and it does not follow you to another device or browser.
+- **"Load saved data"** — brings back whatever was last kept with "Save on this device".
+- To bring a `.json` backup back later (on this computer or another one), use the same **"Import CSV from Express"** file picker and select the `.json` file instead of CSVs.
 - The 4 role passcodes are hashed before storage, but the imported sales/customer data itself is stored in plain form in the browser's own storage — access is gated by a passcode, it is not encryption. Anyone with access to the browser profile (or the downloaded JSON backup) can read the underlying data.
 
 ## 7. Known limitations
