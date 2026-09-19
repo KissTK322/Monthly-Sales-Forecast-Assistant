@@ -267,7 +267,11 @@ function forecastViewBase() {
    its method, window, cutoff, unit, error and n, per the brief. */
 const demandClassLabels={regular:['Regular','สม่ำเสมอ'],irregular:['Irregular','ไม่สม่ำเสมอ'],sparse:['Sparse','ห่าง'],insufficient:['Insufficient history','ประวัติไม่พอ']};
 const demandClassTone={regular:'good',irregular:'warn',sparse:'warn',insufficient:'bad'};
-const forecastReasonLabels={'not-enough-data':['Fewer than 3 months with a sale in the last 9 — only the sales gap is shown.','ขายน้อยกว่า 3 เดือนจาก 9 เดือนล่าสุด — แสดงเฉพาะช่วงห่างของการขาย'],'too-few-months':['3-4 months with a sale in the last 9 — too few for a number; only the sales gap is shown.','ขาย 3-4 เดือนจาก 9 เดือนล่าสุด — น้อยเกินจะให้ตัวเลข แสดงเฉพาะช่วงห่างของการขาย']};
+function forecastReasonLabel(fc,historyMonths){
+ if(fc.reason==='not-enough-data')return t('Fewer than 3 months with a sale in the last '+historyMonths+' — only the sales gap is shown.','ขายน้อยกว่า 3 เดือนจาก '+historyMonths+' เดือนล่าสุด — แสดงเฉพาะช่วงห่างของการขาย');
+ if(fc.reason==='too-few-months')return t('Sold in '+fc.monthsWithSales+' of the last '+historyMonths+' months — too few for a number; only the sales gap is shown.','ขาย '+fc.monthsWithSales+' จาก '+historyMonths+' เดือนล่าสุด — น้อยเกินจะให้ตัวเลข แสดงเฉพาะช่วงห่างของการขาย');
+ return '—';
+}
 const wapeGradeMeta={good:{tone:'good',icon:'✓',label:['Good, within 10%','ดี ไม่เกิน 10%']},fair:{tone:'good',icon:'✓',label:['Fair, within 15%','พอใช้ ไม่เกิน 15%']},weak:{tone:'warn',icon:'!',label:['Weak, within 25%','อ่อน ไม่เกิน 25%']},unusable:{tone:'bad',icon:'✕',label:['Above 25%, judge with care','เกิน 25% ควรพิจารณาด้วยความระมัดระวัง']},unknown:{tone:'warn',icon:'?',label:['Not measured','ยังไม่ได้วัด']}};
 function groupLevelLines(){return data.sales.map(sale=>{const p=bySku(sale.sku);return p?{date:sale.date,quantity:sale.quantity,unit:p.unit,code:sale.sku,group:p.sku.split('-')[0]}:null}).filter(Boolean)}
 function groupDominantUnit(lines,group){const totals=new Map();for(const l of lines)if(l.group===group)totals.set(l.unit,(totals.get(l.unit)||0)+l.quantity);return[...totals.entries()].sort((a,b)=>b[1]-a[1])[0]?.[0]}
@@ -277,15 +281,22 @@ function groupMonthlyHistory(groupLines,unitForGroup,monthCount){
  const months=[];for(let m=E.shiftMonth(data.completeThrough,-(monthCount-1));m<=data.completeThrough;m=E.shiftMonth(m,1))months.push(m);
  return {months,values:months.map(m=>totals.get(m)||0)};
 }
+function datasetHistoryMonths(cutoff){
+ const earliest=data.sales.map(r=>r.date.slice(0,7)).sort()[0];
+ if(!earliest)return 0;
+ let count=0;for(let m=earliest;m<=cutoff.slice(0,7);m=Predictions.shiftMonth(m,1))count++;
+ return count;
+}
 function groupForecastPanel(){
  if(data.demo)return '';
  const lines=groupLevelLines(),groups=[...new Set(lines.map(l=>l.group))].sort(),cutoff=E.monthEnd(data.completeThrough),nextMonth=Predictions.shiftMonth(data.completeThrough,1);
+ const historyMonths=datasetHistoryMonths(cutoff);
  const rows=groups.map(group=>{
   const unitForGroup=groupDominantUnit(lines,group);
   const groupLines=lines.filter(l=>l.group===group);
   const series=Predictions.buildSeries(groupLines,{unit:unitForGroup,key:()=>group})[0];
   if(!series)return null;
-  const fc=Predictions.forecastNextMonth(series,cutoff);
+  const fc=Predictions.forecastNextMonth(series,cutoff,historyMonths);
   const label=state.lang==='th'?bySku(data.products.find(p=>p.sku.split('-')[0]===group)?.sku||'').groupTh:bySku(data.products.find(p=>p.sku.split('-')[0]===group)?.sku||'').group;
   return {group,label:label||group,fc,unitForGroup,groupLines};
  }).filter(Boolean);
@@ -305,20 +316,20 @@ function groupForecastPanel(){
     value) sharing the most common unit, so the series stay comparable. */
  const commonUnit=[...byUnit.entries()].sort((a,b)=>b[1].length-a[1].length)[0]?.[0];
  const topForLine=(byUnit.get(commonUnit)||[]).slice(0,4);
- const monthCount=Math.min(9,rows[0]?9:0);
- const histSeries=topForLine.map((r,i)=>{const h=groupMonthlyHistory(r.groupLines,r.unitForGroup,9);return {name:r.label,values:h.values,color:['var(--cat-1)','var(--cat-2)','var(--cat-3)','var(--cat-4)'][i]}});
- const histMonths=topForLine.length?groupMonthlyHistory(topForLine[0].groupLines,topForLine[0].unitForGroup,9).months:[];
+ const histSeries=topForLine.map((r,i)=>{const h=groupMonthlyHistory(r.groupLines,r.unitForGroup,historyMonths);return {name:r.label,values:h.values,color:['var(--cat-1)','var(--cat-2)','var(--cat-3)','var(--cat-4)'][i]}});
+ const histMonths=topForLine.length?groupMonthlyHistory(topForLine[0].groupLines,topForLine[0].unitForGroup,historyMonths).months:[];
  const lineChart=topForLine.length?chart(histMonths,histSeries,commonUnit):'';
 
  const withoutNumber=rows.filter(r=>r.fc.value===null);
- const reasonList=withoutNumber.length?'<p class="note">'+t('Not enough history for a number yet: ','ยังไม่มีประวัติพอให้ตัวเลข: ')+withoutNumber.map(r=>esc(r.label)+' ('+esc(t(...(forecastReasonLabels[r.fc.reason]||['','']))) +')').join('; ')+'</p>':'';
+ const reasonList=withoutNumber.length?'<p class="note">'+t('Not enough history for a number yet: ','ยังไม่มีประวัติพอให้ตัวเลข: ')+withoutNumber.map(r=>esc(r.label)+' ('+esc(forecastReasonLabel(r.fc,historyMonths)) +')').join('; ')+'</p>':'';
 
- /* A6 monthly pattern: one row per group, one column per trailing 9-month
-    calendar month, cell = that month's quantity in the group's own unit
-    (row-normalized, since groups do not share a unit). Paired with the
-    demand-class label so the regular/irregular/sparse call is visible
+ /* A6 monthly pattern: one row per group, one column per trailing calendar
+    month in the dataset's own history (not a fixed 9 — see
+    datasetHistoryMonths), cell = that month's quantity in the group's own
+    unit (row-normalized, since groups do not share a unit). Paired with
+    the demand-class label so the regular/irregular/sparse call is visible
     alongside the pattern that produced it, not just asserted. */
- const patternMonths=[];for(let m=E.shiftMonth(data.completeThrough,-8);m<=data.completeThrough;m=E.shiftMonth(m,1))patternMonths.push(m);
+ const patternMonths=[];for(let m=E.shiftMonth(data.completeThrough,-(historyMonths-1));m<=data.completeThrough;m=E.shiftMonth(m,1))patternMonths.push(m);
  const patternRows=rows.map(r=>{
   const totals=new Map();for(const l of r.groupLines){if(l.unit!==r.unitForGroup)continue;const m=l.date.slice(0,7);totals.set(m,(totals.get(m)||0)+l.quantity)}
   const classInfo=demandClassLabels[r.fc.demandClass]||['',''];
@@ -327,11 +338,11 @@ function groupForecastPanel(){
  const patternHeatmap=heatmapTable(t('Group (demand class)','กลุ่ม (คลาสดีมานด์)'),patternMonths.map(m=>month(m)),patternRows,'row')+
   '<p class="note">'+t('One row per group, shaded by that group\'s own busiest month (darker = more sold, blank = no sale). Compare the shape of the row, not the colour across rows — units differ by group.','หนึ่งแถวต่อหนึ่งกลุ่ม ไล่สีตามเดือนที่ขายดีที่สุดของกลุ่มนั้นเอง (เข้ม = ขายเยอะ, ว่าง = ไม่มีขาย) เปรียบเทียบรูปแบบในแต่ละแถว ไม่ใช่เทียบสีข้ามแถว เพราะหน่วยต่างกันตามกลุ่ม')+'</p>';
 
- const detailTable=table([t('Group','กลุ่ม'),t('Demand class (9-month window)','คลาสดีมานด์ (9 เดือน)'),t('Months with sales','เดือนที่มีขาย'),t('Window','ช่วง'),t('WAPE','WAPE'),t('Forecast for '+month(nextMonth),'คาดการณ์เดือน '+month(nextMonth))],
-  rows.map(r=>{const classInfo=demandClassLabels[r.fc.demandClass]||['',''];const valueCell=r.fc.value===null?'<span class="pill '+(demandClassTone[r.fc.demandClass]||'warn')+'">'+esc(t(...(forecastReasonLabels[r.fc.reason]||['—','—'])))+'</span>':num(r.fc.value,1)+' '+esc(r.unitForGroup);return '<tr><td><strong>'+esc(r.label)+'</strong></td><td><span class="pill '+demandClassTone[r.fc.demandClass]+'">'+esc(t(...classInfo))+'</span></td><td>'+r.fc.monthsWithSales+' / 9</td><td>'+(r.fc.window||'—')+'</td><td>'+(r.fc.wape===null?'—':pct(r.fc.wape))+'</td><td>'+valueCell+'</td></tr>'}));
+ const detailTable=table([t('Group','กลุ่ม'),t('Demand class ('+historyMonths+'-month window)','คลาสดีมานด์ ('+historyMonths+' เดือน)'),t('Months with sales','เดือนที่มีขาย'),t('Window','ช่วง'),t('WAPE','WAPE'),t('Forecast for '+month(nextMonth),'คาดการณ์เดือน '+month(nextMonth))],
+  rows.map(r=>{const classInfo=demandClassLabels[r.fc.demandClass]||['',''];const valueCell=r.fc.value===null?'<span class="pill '+(demandClassTone[r.fc.demandClass]||'warn')+'">'+esc(forecastReasonLabel(r.fc,historyMonths))+'</span>':num(r.fc.value,1)+' '+esc(r.unitForGroup);return '<tr><td><strong>'+esc(r.label)+'</strong></td><td><span class="pill '+demandClassTone[r.fc.demandClass]+'">'+esc(t(...classInfo))+'</span></td><td>'+r.fc.monthsWithSales+' / '+historyMonths+'</td><td>'+(r.fc.window||'—')+'</td><td>'+(r.fc.wape===null?'—':pct(r.fc.wape))+'</td><td>'+valueCell+'</td></tr>'}));
 
  return panel(t('Group-level demand forecast (headline method)','คาดการณ์ความต้องการระดับกลุ่มสินค้า (วิธีหลัก)'),
-  '<p class="note">'+t('Method: weighted monthly consumption rate x damped trend, window of 3 or 6 months chosen per group by backtest. WAPE is always shown alongside the number — good/fair/weak/unusable describes it, it never hides it. Only a group with fewer than 5 of the last 9 months selling has no number to show.','วิธี: อัตราการใช้รายเดือนแบบถ่วงน้ำหนัก คูณแนวโน้มแบบหน่วง เลือกช่วง 3 หรือ 6 เดือนต่อกลุ่มด้วยการทดสอบย้อนหลัง แสดง WAPE คู่กับตัวเลขเสมอ ระดับดี/พอใช้/อ่อน/ใช้ไม่ได้ใช้อธิบายเท่านั้น ไม่ซ่อนตัวเลข มีแค่กลุ่มที่ขายน้อยกว่า 5 ใน 9 เดือนล่าสุดเท่านั้นที่ไม่มีตัวเลขให้')+'</p>'+
+  '<p class="note">'+t('Method: weighted monthly consumption rate x damped trend, window of 3 or 6 months chosen per group by backtest. Demand class compares months-with-a-sale against the full '+historyMonths+' months of imported history, not a fixed 9. WAPE is always shown alongside the number — good/fair/weak/unusable describes it, it never hides it. Only a group selling in fewer than about a third of those '+historyMonths+' months has no number to show.','วิธี: อัตราการใช้รายเดือนแบบถ่วงน้ำหนัก คูณแนวโน้มแบบหน่วง เลือกช่วง 3 หรือ 6 เดือนต่อกลุ่มด้วยการทดสอบย้อนหลัง คลาสดีมานด์เทียบเดือนที่มีขายกับประวัติทั้งหมด '+historyMonths+' เดือนที่นำเข้า ไม่ตายตัวที่ 9 เดือน แสดง WAPE คู่กับตัวเลขเสมอ ระดับดี/พอใช้/อ่อน/ใช้ไม่ได้ใช้อธิบายเท่านั้น ไม่ซ่อนตัวเลข มีแค่กลุ่มที่ขายน้อยกว่าประมาณหนึ่งในสามของ '+historyMonths+' เดือนเท่านั้นที่ไม่มีตัวเลขให้')+'</p>'+
   barGroups+reasonList+
   (lineChart?'<h4 style="margin:18px 0 4px;font-size:13px;color:var(--muted)">'+esc(t('Monthly consumption, top groups (','ปริมาณใช้รายเดือน กลุ่มขายดีสุด (')+commonUnit+')')+'</h4>'+lineChart:'')+
   '<h4 style="margin:18px 0 4px;font-size:13px;color:var(--muted)">'+t('Demand pattern by month (A6)','รูปแบบการขายรายเดือน (A6)')+'</h4>'+patternHeatmap+
@@ -806,7 +817,7 @@ async function decodeExpressCsv(file){
 async function buildExpressImport(files){
  const total=files.reduce((sum,file)=>sum+file.size,0);if(total>25000000)throw Error(t('The selected files exceed the 25 MB import limit.','ไฟล์ที่เลือกมีขนาดรวมเกิน 25 MB'));
  const documents=[];for(const file of files){documents.push({name:file.name,text:await decodeExpressCsv(file)})}
- return ExpressCsvImporter.buildDataset(documents);
+ return ExpressCsvImporter.buildDataset(documents,data.demo?undefined:data);
 }
 document.addEventListener('toggle',e=>{if(e.target.matches('#express-import-dropdown'))state.importExpanded=e.target.open},true);
 document.addEventListener('toggle',e=>{if(e.target.matches('#express-import-dropdown'))state.importExpanded=e.target.open},true);

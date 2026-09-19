@@ -182,7 +182,13 @@
     return `${prefix} · ${known[lang]} *`;
   }
 
-  function buildDataset(documents) {
+  /* documents: the newly selected files. existing: the currently loaded
+     dataset (optional) — only ever consulted when the new files contain no
+     cash/credit sales, to allow adding deposit receipts on their own after
+     sales are already loaded. When sales documents ARE present, this is a
+     fresh, from-scratch rebuild exactly as before, and `existing` is not
+     read at all — importing sales has always replaced the dataset. */
+  function buildDataset(documents, existing) {
     const recognized = documents.map(document => ({
       ...document,
       type: classify(document.text),
@@ -190,16 +196,24 @@
     }));
     const unknown = recognized.filter(document => document.type === 'unknown');
     if (unknown.length) throw new Error(`Unsupported Express CSV: ${unknown.map(document => document.name).join(', ')}`);
-    if (!recognized.some(document => document.type === 'cash' || document.type === 'credit')) {
+
+    const hasSalesDocs = recognized.some(document => document.type === 'cash' || document.type === 'credit');
+    const hasDepositDocs = recognized.some(document => document.type === 'deposit');
+    const depositOnlyMerge = !hasSalesDocs && hasDepositDocs && !!existing;
+
+    if (!hasSalesDocs && !hasDepositDocs) {
       throw new Error('Select at least one cash-sales or credit-sales CSV file.');
     }
+    if (!hasSalesDocs && hasDepositDocs && !existing) {
+      throw new Error('Deposit receipts alone cannot start a new dataset: they carry no sales date to set the reporting month from. Import at least one cash-sales or credit-sales CSV first, then add deposit files afterwards.');
+    }
 
-    const products = new Map();
-    const customers = new Map();
-    const customerByName = new Map();
-    const salespeople = new Map();
-    const sales = [];
-    const adjustments = [];
+    const products = new Map((depositOnlyMerge ? existing.products : []).map(p => [p.sku, { ...p }]));
+    const customers = new Map((depositOnlyMerge ? existing.customers : []).map(c => [c.id, { ...c }]));
+    const customerByName = new Map((depositOnlyMerge ? existing.customers : []).map(c => [c.name.toLowerCase(), c.id]));
+    const salespeople = new Map((depositOnlyMerge ? existing.salespeople : []).map(p => [p.id, { ...p }]));
+    const sales = depositOnlyMerge ? [...existing.sales] : [];
+    const adjustments = depositOnlyMerge ? [...existing.adjustments] : [];
     const unresolved = [];
 
     function ensureCustomer(id, name) {
@@ -365,6 +379,29 @@
           });
         }
       });
+    }
+
+    if (depositOnlyMerge) {
+      /* sales, products and completeThrough all carry over from the
+         existing dataset unchanged — nothing here re-derives them, since
+         a deposit file has no sale date to derive them from. Only
+         customers, salespeople and adjustments can have grown. */
+      const usedSalespeople = new Set([...sales.map(row => row.salesperson), ...adjustments.map(row => row.salesperson)]);
+      return {
+        version: 1,
+        demo: false,
+        completeThrough: existing.completeThrough,
+        products: [...products.values()].sort((a, b) => a.sku.localeCompare(b.sku)),
+        salespeople: [...salespeople.values()].filter(person => usedSalespeople.has(person.id)).sort((a, b) => a.staffId.localeCompare(b.staffId)),
+        customers: [...customers.values()].sort((a, b) => a.id.localeCompare(b.id)),
+        sales,
+        adjustments,
+        importSummary: {
+          format: 'express-csv',
+          files: [...(existing.importSummary?.files || []), ...recognized.map(document => ({ name: document.name, type: document.type }))],
+          unresolvedRows: [...(existing.importSummary?.unresolvedRows || []), ...unresolved],
+        },
+      };
     }
 
     if (!sales.length) throw new Error('No sale lines were found in the selected Express CSV files.');

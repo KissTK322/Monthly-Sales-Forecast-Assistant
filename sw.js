@@ -6,7 +6,7 @@
  * Files the user chooses (the Express CSV reports) never pass through this
  * worker: they are read from a File object in the page.
  */
-const VERSION = '1.1.0';
+const VERSION = '1.2.0';
 const CACHE = `monthly-forecast-${VERSION}`;
 
 const APP_FILES = [

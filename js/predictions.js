@@ -123,20 +123,52 @@
     return window.filter((m) => (totals.get(m) || 0) > 0).length;
   }
 
-  function classifyMonthsWithSales(monthsWithSales) {
-    if (monthsWithSales >= 8) return 'regular';
-    if (monthsWithSales >= 5) return 'irregular';
-    if (monthsWithSales >= 3) return 'sparse';
-    return 'insufficient';
+  /* How many trailing months this ONE series itself spans, earliest sale to
+     cutoff. Used only as a fallback when no dataset-wide history length is
+     supplied — see the historyMonths parameter below. */
+  function seriesHistoryMonths(series, cutoffDate) {
+    if (!series.lines.length) return 0;
+    const cutoffMonth = cutoffDate.slice(0, 7);
+    const earliestMonth = series.lines[0].date.slice(0, 7);
+    let count = 0;
+    for (let m = earliestMonth; m <= cutoffMonth; m = shiftMonth(m, 1)) count++;
+    return count;
   }
 
-  function demandClass(series, cutoffDate) {
-    const monthsWithSales = monthsWithSalesInTrailingWindow(series, cutoffDate, 9);
-    const className = classifyMonthsWithSales(monthsWithSales);
+  /* The original rule was fixed at 9 trailing months: 8-9 regular, 5-7
+     irregular, 3-4 sparse, under 3 insufficient (CLAUDE.md section 8). That
+     is a fixed CALENDAR-MONTH GUARD for the "insufficient" floor (under 3
+     months of anything is never enough, regardless of window size) plus a
+     PROPORTION for the rest, so the same call works once more history
+     arrives (prd.md section 13, Q1): a 15-month window needs the same
+     8/9 share (>=13.3, i.e. >=14 months) to read as regular, not a fixed
+     8 months out of 15. The three cut ratios are exactly the original
+     9-month thresholds (8/9, 5/9, 3/9), kept as exact fractions rather than
+     rounded percentages so the original 9-month case is bit-for-bit
+     unchanged (8/9 = 88.9%, which a rounded ">=89%" check would wrongly
+     fail). */
+  function classifyMonthsWithSales(monthsWithSales, windowSize) {
+    if (!windowSize || windowSize < 3 || monthsWithSales < 3) return 'insufficient';
+    const ratio = monthsWithSales / windowSize;
+    if (ratio >= 8 / 9 - 1e-9) return 'regular';
+    if (ratio >= 5 / 9 - 1e-9) return 'irregular';
+    return 'sparse';
+  }
+
+  /* historyMonths: the number of trailing months to classify over. Pass the
+     dataset's own overall history length (the same value for every series
+     being compared) so all groups are judged on the same calendar span;
+     omit it only for a single series considered on its own (falls back to
+     that series' own span), which is what makes every existing test still
+     construct its own scenario without having to state the window twice. */
+  function demandClass(series, cutoffDate, historyMonths) {
+    const windowSize = historyMonths || seriesHistoryMonths(series, cutoffDate);
+    const monthsWithSales = monthsWithSalesInTrailingWindow(series, cutoffDate, windowSize);
+    const className = classifyMonthsWithSales(monthsWithSales, windowSize);
     return {
       className,
       monthsWithSales,
-      periods: 9,
+      periods: windowSize,
       periodType: 'month',
       cutoff: cutoffDate,
       advice: {
@@ -212,12 +244,13 @@
     return totalGap / (lines.length - 1);
   }
 
-  function forecastNextMonth(series, cutoffDate) {
+  function forecastNextMonth(series, cutoffDate, historyMonths) {
     const cutoffMonth = cutoffDate.slice(0, 7);
     const targetMonth = shiftMonth(cutoffMonth, 1);
     const unit = series.unit;
-    const monthsWithSales = monthsWithSalesInTrailingWindow(series, cutoffDate, 9);
-    const className = classifyMonthsWithSales(monthsWithSales);
+    const windowSize = historyMonths || seriesHistoryMonths(series, cutoffDate);
+    const monthsWithSales = monthsWithSalesInTrailingWindow(series, cutoffDate, windowSize);
+    const className = classifyMonthsWithSales(monthsWithSales, windowSize);
 
     const base = {
       targetMonth, unit, method: 'consumption-rate', cutoff: cutoffDate,

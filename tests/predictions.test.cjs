@@ -102,16 +102,53 @@ test('demand class follows the number of months that had a sale', () => {
 });
 
 test('sparse and insufficient series return a reason, never a number', () => {
+  /* historyMonths=9 states explicitly what these fixtures mean: a 9-month
+     dataset in which this group only shows activity in 3 (or 2) of those
+     months — not "a product we have only ever seen for 3 months", which
+     is a different, self-referential question buildSeries cannot answer
+     on its own (see the dynamic-window test below). Real app.js callers
+     always pass the dataset's own history length the same way. */
   const sparse = series([['2026-06-02', 5], ['2026-07-03', 5], ['2026-08-04', 5]]);
-  const result = E.forecastNextMonth(sparse, '2026-08-31');
+  const result = E.forecastNextMonth(sparse, '2026-08-31', 9);
   assert.strictEqual(result.value, null);
   assert.strictEqual(result.reason, 'too-few-months');
   assert.ok(result.averageGapDays > 0, 'a sparse series still reports its average gap');
 
   const thin = series([['2026-07-03', 5], ['2026-08-04', 5]]);
-  const thinResult = E.forecastNextMonth(thin, '2026-08-31');
+  const thinResult = E.forecastNextMonth(thin, '2026-08-31', 9);
   assert.strictEqual(thinResult.value, null);
   assert.strictEqual(thinResult.reason, 'not-enough-data');
+});
+
+test('the trailing window is not hardcoded to 9 months: it follows the dataset\'s own history length', () => {
+  /* Same shape as the fixed-9-month regular case above, but with 15 months
+     of history and proportionally more months with a sale, to prove the
+     window itself moved, not just the numbers inside a fixed 9. */
+  const entries = [];
+  const months15 = [];
+  for (let m = '2025-06'; m <= '2026-08'; m = E.shiftMonth(m, 1)) months15.push(m);
+  assert.strictEqual(months15.length, 15, 'test setup: expected 15 trailing months to 2026-08');
+  months15.forEach((m) => entries.push(...evenMonth(m, 4)));
+  const s = series(entries);
+
+  const classified9 = E.demandClass(s, '2026-08-31', 9);
+  const classified15 = E.demandClass(s, '2026-08-31', 15);
+  assert.strictEqual(classified9.periods, 9);
+  assert.strictEqual(classified15.periods, 15);
+  assert.strictEqual(classified9.monthsWithSales, 9, 'only the trailing 9 of the 15 months are counted when historyMonths=9');
+  assert.strictEqual(classified15.monthsWithSales, 15, 'all 15 are counted when historyMonths=15');
+  assert.strictEqual(classified15.className, 'regular', '15/15 is regular under the same 8/9 proportion as the original rule');
+
+  // A group that only sold in the most recent 5 of those 15 months reads
+  // as sparse-to-insufficient against the full 15-month window, even
+  // though 5 months on their own would have read as "irregular" under the
+  // old fixed-9 rule -- the proportion, not the raw count, now decides.
+  const fiveOf15 = [];
+  months15.slice(-5).forEach((m) => fiveOf15.push(...evenMonth(m, 4)));
+  const thin15 = series(fiveOf15);
+  const thin15Class = E.demandClass(thin15, '2026-08-31', 15);
+  assert.strictEqual(thin15Class.monthsWithSales, 5);
+  assert.strictEqual(thin15Class.className, 'sparse', '5/15 = 33% falls in the sparse band, not irregular');
 });
 
 test('a series whose error is above tolerance still shows the number, graded unusable, not hidden', () => {
