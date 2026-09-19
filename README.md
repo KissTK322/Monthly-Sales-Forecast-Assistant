@@ -1,87 +1,93 @@
 # Monthly Sales Forecast Assistant
 
-A Thai/English sales and demand dashboard for the management team of a domestic metal-roofing manufacturer. It reads the company's three Express reports, shows how sales, products, customers and salespeople relate, and predicts what the available history actually supports.
+A Thai/English sales dashboard and next-month demand-forecast tool for a domestic metal-roofing and PU-insulation manufacturer. It reads the company's three Express accounting exports (cash sales, credit sales, deposit receipts) directly in the browser and turns them into a forecast, a best-seller/stock-cover view, and team/customer reporting — nothing is uploaded to a server.
 
-**Your files stay on your device.** The reports are read in the browser. There is no server, no account, and no analytics.
+University workshop project ("Vibe Coding").
 
-University workshop project ("Vibe Coding"). Team: Titan and Tonkla.
+## 1. How to use it
 
-## What it does
+**Live site:** [kisstk322.github.io/Monthly-Sales-Forecast-Assistant](https://kisstk322.github.io/Monthly-Sales-Forecast-Assistant/)
 
-| | |
-| --- | --- |
-| Overview, Products, Sales team, Customers | Revenue, invoices, averages, rankings, period comparison, cash / credit / combined |
-| Demand class per product | Smooth, erratic, intermittent, lumpy, or too sparse — which items are worth holding and which are ordered to demand |
-| Repurchase and lapse alerts | Repeat customers ranked by the chance they buy in the next 30 days, from a plain gap rule and a logistic model whose coefficients are shown |
-| Attribute demand | Next month's metres by profile, thickness and colour, parsed from the item descriptions |
-| Observed best sellers | What actually sold best each month, labelled as history rather than as a seasonal pattern |
+The address above (no `/index.html` needed) is served by GitHub Pages and was confirmed working (`HTTP 200`) right before this document was written. Open it, pick a role on the welcome screen, and (as Management) import the three Express CSV files from the **Data & backup** tab.
 
-Every predicted figure shows its method, input window, data cutoff, unit and measured error. A series that cannot be predicted says why instead of showing a number.
+### Run it locally instead
 
-**Not in this version:** stock planning and reorder quantities, per-SKU forecasts, revenue forecasting and seasonal models. They need stock data or 24 months of history, neither of which exists yet. See `prd.md` section 11.1.
-
-## Install it
-
-Open the published address, then:
-
-| Device | Browser | How |
-| --- | --- | --- |
-| iPhone / iPad | Safari | Share → Add to Home Screen |
-| Android | Chrome | Install banner, or ⋮ → Install app |
-| Windows | Edge / Chrome | Install icon in the address bar |
-| Mac | Safari | File → Add to Dock |
-
-After the first visit it opens offline. The app shows the steps for whichever device you are on.
-
-## Run it locally
-
-A service worker does not run from a double-clicked file, so use a local server:
+No build step and no dependencies — it's plain HTML/CSS/JS.
 
 ```bash
-python -m http.server 8000
+git clone https://github.com/KissTK322/Monthly-Sales-Forecast-Assistant.git
+cd Monthly-Sales-Forecast-Assistant
+npx serve -l 8000
+# or: python -m http.server 8000
 ```
 
-Then open `http://localhost:8000`.
+Then open `http://localhost:8000`. A service worker will not run from a double-clicked file, so it must be served over `http://` or `https://`.
 
-```bash
-node --test tests/
-```
+Optional: `node build.cjs` bundles everything into a single offline `dist/index.html` file (no service worker in that build). Automated tests: `node --test tests/*.test.cjs` — 30 tests, currently all passing.
 
-```bash
-node build.cjs
-```
+## 2. Roles
 
-`build.cjs` produces `dist/index.html`, a single self-contained file that opens straight from a folder with no server. It has no service worker and cannot be installed — it is for reading the app offline, not for using it day to day.
+Chosen on the welcome screen before any sales data is shown. Each passcode is hashed (PBKDF2-SHA256, 600,000 iterations) and stored only in that browser's `localStorage` — nothing is sent anywhere, and switching browsers or devices means setting the passcode again.
 
-## Importing the reports
-
-Data & guide → choose the file. The app expects the three Express exports:
-
-| Report | Thai title |
+| Role | Access |
 | --- | --- |
-| Cash sales | รายงานขายเงินสด เรียงตามวันที่ |
-| Credit sales | รายงานใบกำกับสินค้า เรียงตามวันที่ |
-| Deposit receipts | รายงานใบรับมัดจำ แยกตามลูกค้า |
+| **Salesperson** | Picks their own imported salesperson ID and sets a 6-character passcode. Sees only their own sales ("My sales" tab). Cannot import data. |
+| **Supervisor** | Everything except the Data & backup tab: overview, forecast, products, sales team, customers, for every salesperson. 12+ character passcode. Cannot import or replace data. |
+| **Management** | Everything Supervisor has, plus the Data & backup tab: import Express CSVs, download/restore JSON backups, and manage products/customers/salespeople. 12+ character passcode. |
+| **Tech Team** | A single "Password support" screen to reset the Supervisor, Management, or an individual salesperson's passcode on that browser. It has no access to any sales, product, or customer data — resetting a passcode does not reveal it. |
 
-They are Windows-874 encoded and the app decodes them for you. Before anything is accepted you get a reconciliation preview — counts, totals, and every row the parser could not classify. A failed import never replaces the data you already had.
+## 3. Importing data
 
-On a phone, if the file appears greyed out in the picker, use **My file is greyed out** to open a picker with no file-type filter.
+Only the **Management** role can import. From the **Data & backup** tab, use "Import CSV from Express" and select the three report files together (or add more later — see below).
 
-## Documents
+The importer identifies each file by the report title printed inside it, not by filename:
 
-| File | What it is |
+| Text found in the file | Treated as |
 | --- | --- |
-| `prd.md` | Scope authority. Start here |
-| `AGENTS.md` | Standing rules for anyone, or anything, working on the code |
-| `architecture.md` | Flow, technical decisions, file layout |
-| `schema.md` | Data model |
-| `implementation-plan.md` | Milestones and dates |
-| `progress.md` | What is actually done, and what broke |
+| `รายงานขายเงินสด` | Cash sales |
+| `รายงานใบกำกับสินค้า` | Credit sales |
+| `รายงานใบรับมัดจำ` | Deposit receipts |
 
-## Limitations
+Express exports these reports in Windows-874 (Thai TIS-620) encoding. The importer decodes each file both as UTF-8 and as Windows-874, scores which result reads as more plausible Thai text, and keeps that one automatically — there is no encoding option to set.
 
-- 9 months of history (December 2025 to August 2026) and no stock data. This is the reason for most of what the app does not do.
-- The colour attribute covers about 61% of metres and has the weakest error of the three; the app shows the covered share beside every figure.
-- The optional local lock is a privacy screen for a shared device, not authentication. Anyone with the address can open the app — it simply contains no data until a file is chosen.
-- Predictions are decision support. Check the stock and the supplier before acting on anything here.
-- The published version carries fake data only. Real client data never leaves the client's device.
+Before anything is applied, a confirmation dialog shows what was parsed (sale-line, product, customer and deposit counts) and asks you to confirm replacing the current dashboard, so a bad file never silently overwrites good data.
+
+**Deposit-only follow-up imports:** if you already have cash or credit sales loaded, you can later import just a new deposit-receipts file on its own — it merges into the existing dataset instead of requiring you to reselect everything. A deposit file can never be used to *start* a dataset on its own, since it carries no sales date to set the reporting month from.
+
+JSON backups (see §6) can be reloaded through the same file picker.
+
+## 4. Main features
+
+- **Demand forecast (headline: group level).** Products are grouped by their 2-digit code prefix. For each group, the model computes a weighted monthly consumption rate with a damped trend, picking a 3- or 6-month window per group by backtest. The forecast's **WAPE (error) is always shown next to the number** — it is graded good/fair/weak/unusable, but a high error never hides the figure. A group needs sales in roughly a third of the imported months' history to get a number at all; below that, the dashboard states why instead of guessing. A monthly pattern heatmap (one row per group, columns following however many months of history are actually loaded — not a fixed count) sits alongside the demand-class label it produced.
+- **Best sellers with days of cover (C1).** Ranks groups by quantity or revenue sold in the selected date range, with a sparkline of the last 6 months. Typing a stock figure per group shows days-of-cover for that group; nothing is assumed if you leave it blank, and the figure is not saved between sessions.
+- **Per-SKU consumption (reference table only).** The original per-product forecast is still shown, but explicitly labelled unreliable — it measures roughly 78% WAPE on the real data — and the group-level forecast above is the one meant to be used.
+- **Products.** Revenue share by product group, a Top-5 ranking (by revenue or by quantity within one unit), a searchable product detail table, and a ranking by parsed attributes (roofing profile, colour, thickness) read from the item descriptions.
+- **Sales team.** Per-salesperson totals, a salesperson × customer-segment matrix, and a salesperson × product-group heatmap matrix.
+- **Customers.** Revenue share by customer company and a searchable, filterable, paginated customer ranking.
+- **Overview.** Headline KPIs and trends for Management and Supervisor.
+
+Product group codes are matched against a small built-in name table; a group not in that table is labelled with a note that the name is temporary and pending confirmation.
+
+## 5. Installing / offline use
+
+The app is an installable PWA (`manifest.webmanifest`, versioned service worker in `sw.js`).
+
+- **iPhone / iPad (Safari):** Share → Add to Home Screen.
+- **Android / Windows / Mac (Chrome or Edge):** use the install icon in the address bar, or the browser menu.
+- **Mac (Safari):** File menu → Add to Dock.
+
+After the first visit, the app shell loads offline. When a new version is deployed, a "Reload" banner appears instead of silently switching versions underneath you. An offline badge shows when the browser has no network connection.
+
+## 6. Privacy and data storage
+
+- CSV files are read from disk with the browser's File API and never leave the device — there is no backend, no analytics, and no runtime dependency on any external service.
+- On every page load the app starts from its own built-in sample dataset and actively clears any old locally-stored dataset from earlier versions. Data you import lives only in that browser tab for the session unless you explicitly choose **"Save on this device"** (kept in `localStorage`) or **"Download data backup"** (a JSON file you keep yourself) from the Data & backup tab.
+- The 4 role passcodes are hashed before storage, but the imported sales/customer data itself is stored in plain form in the browser's own storage — access is gated by a passcode, it is not encryption. Anyone with access to the browser profile (or the downloaded JSON backup) can read the underlying data.
+
+## 7. Known limitations
+
+- **Per-SKU forecasts are not reliable** (~78% measured WAPE) and are shown only as a labelled reference table; decisions should use the group-level forecast instead.
+- **No stock/inventory data source is imported.** Days-of-cover in the best-sellers view comes only from a number typed in by hand per group, is not validated against any real stock count, and resets when the page reloads or the tab is closed.
+- **History is short.** The real dataset currently covers under a year, which is enough for the 3–6 month rolling window this forecast uses, but not enough to turn on calendar-month seasonality (that needs roughly 12–24 months) — the app says so rather than guessing a seasonal pattern it can't support yet.
+- **Product group names are provisional**, derived automatically from the 2-digit code prefixes in the imported files; anything not in the small built-in name table is shown with a "pending confirmation" note rather than a made-up name.
+- **Credit-channel customers have no customer code** in the Express export (only a name), so they cannot always be automatically matched to the same customer as in cash sales.
