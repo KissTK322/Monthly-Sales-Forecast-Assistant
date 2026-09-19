@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Styleguide — Monthly Sales Forecast Assistant</title>
+<link rel="stylesheet" href="css/styles.css">
+<script>
+/* Same anti-flash block as the app, so the styleguide starts in the theme the
+   app would use. */
+(function () {
+  try {
+    var theme = localStorage.getItem('msfa.theme');
+    if (theme === 'light' || theme === 'dark') document.documentElement.setAttribute('data-theme', theme);
+    var lang = localStorage.getItem('msfa.lang');
+    if (lang === 'th' || lang === 'en') document.documentElement.setAttribute('lang', lang);
+  } catch (error) { /* ignored */ }
+})();
+</script>
+</head>
+<body>
+
+<header class="app-header">
+  <div class="app-header__inner">
+    <div class="app-title">
+      <img class="app-title__mark" src="icons/favicon-32.png" alt="" width="32" height="32">
+      <div class="app-title__text">
+        <h1>Styleguide</h1>
+        <p class="app-title__sub">Development page. Not part of the app, not cached, not in dist.</p>
+      </div>
+    </div>
+    <div class="app-controls">
+      <label class="control">
+        <span class="control__label">Language</span>
+        <select id="lang-select" class="select">
+          <option value="th">ไทย</option>
+          <option value="en">English</option>
+        </select>
+      </label>
+      <label class="control">
+        <span class="control__label">Theme</span>
+        <select id="theme-select" class="select">
+          <option value="system">System</option>
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+        </select>
+      </label>
+    </div>
+  </div>
+</header>
+
+<main class="main" id="guide"></main>
+<div id="toast-region" class="toast-region" aria-live="polite"></div>
+
+<script src="js/storage.js"></script>
+<script src="js/i18n.js"></script>
+<script src="js/theme.js"></script>
+<script src="js/engine.js"></script>
+<script src="js/views/_components.js"></script>
+<script src="js/charts.js"></script>
+<script>
+/* Inline on purpose: a file under js/ would have to be precached and shipped
+   with the app, and this page is for us, not for the client. */
+(function () {
+  'use strict';
+  var MSFA = window.MSFA;
+  var ui = MSFA.ui;
+  var guide = document.getElementById('guide');
+
+  MSFA.i18n.init();
+  MSFA.theme.init();
+  document.getElementById('lang-select').value = MSFA.i18n.getLang();
+  document.getElementById('theme-select').value = MSFA.theme.getPref();
+
+  document.getElementById('lang-select').addEventListener('change', function (event) {
+    MSFA.i18n.setLang(event.target.value);
+    render();
+  });
+  document.getElementById('theme-select').addEventListener('change', function (event) {
+    MSFA.theme.setPref(event.target.value);
+    render();
+  });
+
+  function section(title, note, children) {
+    var card = ui.card([ui.sectionHeader(title, note)]);
+    (children || []).forEach(function (child) { card.appendChild(child); });
+    return card;
+  }
+
+  function swatchRow(tokens) {
+    var row = ui.el('div', 'row');
+    tokens.forEach(function (token) {
+      var box = ui.el('div');
+      var chip = ui.el('div');
+      chip.style.background = 'var(' + token + ')';
+      chip.style.width = '64px';
+      chip.style.height = '40px';
+      chip.style.borderRadius = '6px';
+      chip.style.border = '1px solid var(--border)';
+      box.appendChild(chip);
+      box.appendChild(ui.el('p', 'chart-note', token));
+      row.appendChild(box);
+    });
+    return row;
+  }
+
+  function render() {
+    guide.replaceChildren();
+
+    guide.appendChild(section('Colour tokens',
+      'Brand colours are decoration only. Grey is never a series colour.', [
+        swatchRow(['--bg', '--surface', '--surface-sunken', '--border', '--text', '--muted']),
+        swatchRow(['--primary', '--on-primary', '--accent-rose', '--accent-blue']),
+        swatchRow(['--chart-1', '--chart-2', '--chart-3', '--chart-4', '--chart-other'])
+      ]));
+
+    var type = ui.el('div');
+    [['--fs-2xl', 'Aa ยอดขายรายเดือน'], ['--fs-xl', 'Aa ยอดขายรายเดือน'], ['--fs-lg', 'Aa ยอดขายรายเดือน'],
+     ['--fs-md', 'Aa ปั้ม ผู้ใหญ่ ที่นี่ น้ำ ฟุ้ง'], ['--fs-sm', 'Aa ปั้ม ผู้ใหญ่ ที่นี่'], ['--fs-xs', 'Aa ปั้ม ผู้ใหญ่']]
+      .forEach(function (entry) {
+        var line = ui.el('p', null, entry[1] + '  (' + entry[0] + ')');
+        line.style.fontSize = 'var(' + entry[0] + ')';
+        type.appendChild(line);
+      });
+    guide.appendChild(section('Type scale',
+      'Thai line height is looser than the Latin default so tone marks do not collide.', [type]));
+
+    guide.appendChild(section('KPI tiles', 'The change indicator is arrow, sign and word: never colour alone.', [
+      ui.kpiRow([
+        { label: MSFA.i18n.t('kpi.sales'), value: '1,284,300', unit: MSFA.i18n.t('unit.baht'), change: 0.128, changeNote: MSFA.i18n.t('change.vsPrevious') },
+        { label: MSFA.i18n.t('kpi.invoices'), value: '683', change: -0.042 },
+        { label: MSFA.i18n.t('kpi.averagePerInvoice'), value: '1,880', unit: MSFA.i18n.t('unit.baht'), change: 0 },
+        { label: MSFA.i18n.t('product.ratePerDay'), value: '94.6', unit: 'm/day', note: '2026-06-01 – 2026-08-31' }
+      ])
+    ]));
+
+    guide.appendChild(section('Buttons', 'Every target is at least 44px tall.', [
+      (function () {
+        var row = ui.el('div', 'row');
+        [['Primary', undefined], ['Secondary', 'secondary'], ['Quiet', 'quiet'], ['Destructive', 'destructive']]
+          .forEach(function (entry) { row.appendChild(ui.button(entry[0], { variant: entry[1] })); });
+        row.appendChild(ui.button('Small', { variant: 'secondary', onClick: function () { ui.toast('Toast: saved'); } }));
+        return row;
+      })()
+    ]));
+
+    guide.appendChild(section('Inputs', 'Font size is 16px so iOS does not zoom the page.', [
+      ui.field('Text', ui.input({ placeholder: 'ลอน760' })),
+      ui.field('Number', ui.input({ type: 'number', value: 500, inline: true })),
+      ui.field('Select', ui.select([{ value: 'a', label: 'เงินสด' }, { value: 'b', label: 'เงินเชื่อ' }], {})),
+      ui.field('File', ui.fileInput({})),
+      ui.field('Segmented', ui.segmented([
+        { value: '3m', label: MSFA.i18n.t('range.3m') },
+        { value: '6m', label: MSFA.i18n.t('range.6m') },
+        { value: 'all', label: MSFA.i18n.t('range.all') }
+      ], { value: '3m', label: 'Range' })),
+      ui.choice('Checkbox', { checked: true }),
+      ui.choice('Radio', { type: 'radio', name: 'demo' })
+    ]));
+
+    guide.appendChild(section('Filter bar', null, [
+      ui.filterBar([
+        ui.field(MSFA.i18n.t('range.label'), ui.segmented([
+          { value: 'a', label: MSFA.i18n.t('range.thisMonth') }, { value: 'b', label: MSFA.i18n.t('range.3m') }
+        ], { value: 'b' })),
+        ui.field(MSFA.i18n.t('channel.label'), ui.select([{ value: 'c', label: MSFA.i18n.t('channel.combined') }], {}))
+      ])
+    ]));
+
+    guide.appendChild(section('Badges', null, [
+      (function () {
+        var row = ui.el('div', 'row');
+        [['class.regular', 'strong'], ['class.irregular', null], ['class.sparse', null], ['class.insufficient', 'warn']]
+          .forEach(function (entry) { row.appendChild(ui.chip(MSFA.i18n.t(entry[0]), entry[1])); });
+        return row;
+      })()
+    ]));
+
+    var rows = [
+      { code: '01-208', qty: 8703, rate: 94.6, share: 0.41 },
+      { code: '02-104', qty: 5211, rate: 56.6, share: 0.25 },
+      { code: '03-101', qty: 2980, rate: 32.4, share: 0.14 }
+    ];
+    guide.appendChild(section('Table',
+      'Sortable headers, numbers right-aligned with tabular figures. Under 600px it scrolls sideways with the first column frozen and no sticky header.', [
+        ui.table({
+          columns: [
+            { key: 'code', label: MSFA.i18n.t('product.code') },
+            { key: 'qty', label: MSFA.i18n.t('product.quantity'), num: true, format: function (r) { return ui.formatNumber(r.qty); } },
+            { key: 'rate', label: MSFA.i18n.t('product.ratePerDay'), num: true, format: function (r) { return ui.formatNumber(r.rate, 1); } },
+            { key: 'share', label: MSFA.i18n.t('product.share'), num: true, format: function (r) { return ui.formatPercent(r.share); } }
+          ],
+          rows: rows,
+          sortKey: 'qty'
+        })
+      ]));
+
+    guide.appendChild(section('Charts',
+      'Fixed series order, legend always, direct labels up to four series, no dual axis.', [
+        MSFA.charts.rankedBars({
+          items: rows.map(function (r) { return { key: r.code, label: r.code, value: r.qty, share: r.share }; }),
+          singleColour: true
+        }),
+        MSFA.charts.stackedShare({
+          items: [
+            { key: '02', label: 'กลุ่ม 02', value: 182815 }, { key: '01', label: 'กลุ่ม 01', value: 65769 },
+            { key: '03', label: 'กลุ่ม 03', value: 40288 }, { key: '04', label: 'กลุ่ม 04', value: 12000 },
+            { key: '06', label: 'กลุ่ม 06', value: 4000 }
+          ]
+        }),
+        MSFA.charts.monthlyLine({
+          points: [
+            { label: '2026-03', value: 120 }, { label: '2026-04', value: 142 },
+            { label: '2026-05', value: 131 }, { label: '2026-06', value: 158 },
+            { label: '2026-07', value: 149 }, { label: '2026-08', value: 165 }
+          ],
+          forecast: [{ label: '2026-09', value: 170, low: 150, high: 190 }],
+          cutoffLabel: '2026-08-31'
+        }),
+        MSFA.charts.donut({
+          items: [
+            { key: '04', label: '04', value: 40 }, { key: '06', label: '06', value: 30 },
+            { key: '03', label: '03', value: 20 }, { key: '08', label: '08', value: 10 }
+          ]
+        })
+      ]));
+
+    guide.appendChild(section('States', null, [
+      ui.emptyState('empty.products.body'),
+      ui.skeleton(3),
+      ui.skeleton(1, true),
+      ui.inlineError(MSFA.i18n.t('data.import.failed')),
+      ui.button('Open dialog / bottom sheet', {
+        variant: 'secondary',
+        onClick: function () {
+          ui.dialog({
+            title: MSFA.i18n.t('profile.title'),
+            content: [ui.el('p', null, MSFA.i18n.t('profile.notEncryptedBody'))],
+            actions: [{ label: MSFA.i18n.t('toast.dismiss'), variant: 'secondary' }]
+          });
+        }
+      })
+    ]));
+  }
+
+  render();
+})();
+</script>
+</body>
+</html>
