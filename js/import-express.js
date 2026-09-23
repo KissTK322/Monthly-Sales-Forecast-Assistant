@@ -60,6 +60,15 @@
     return thaiReadabilityScore(utf8Text) > thaiReadabilityScore(thaiText) ? utf8Text : thaiText;
   }
 
+  /* Express does not escape a double quote inside a quoted cell. Product
+     names use it as the inch mark, so the export contains cells such as
+       "12-403 -  กรรไกรตัดสังกะสี 12"",1.00,...   (name ends with 12")
+       "10-958 -  สกรูเหล็ก 8*2.5"(ซิงค์",300.00,...  (quote mid-name)
+     Toggling on every quote would treat the rest of the line as one cell,
+     losing quantity and amount (36 real lines, 8 whole invoices). So inside
+     a quoted cell a quote only closes the cell when a comma or the end of
+     the line follows it; a standard "" escape in the middle of a cell still
+     reads as one quote. */
   function parseCsvLine(line) {
     const cells = [];
     let value = '';
@@ -67,11 +76,17 @@
     for (let i = 0; i < line.length; i++) {
       const ch = line[i];
       if (ch === '"') {
-        if (quoted && line[i + 1] === '"') {
+        const next = line[i + 1];
+        const closesCell = next === undefined || next === ',';
+        if (!quoted) {
+          quoted = true;
+        } else if (closesCell) {
+          quoted = false;
+        } else if (next === '"' && line[i + 2] !== undefined && line[i + 2] !== ',') {
           value += '"';
           i++;
         } else {
-          quoted = !quoted;
+          value += '"';
         }
       } else if (ch === ',' && !quoted) {
         cells.push(clean(value));
