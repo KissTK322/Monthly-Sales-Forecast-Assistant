@@ -11,7 +11,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = '1.2.0';
+  var APP_VERSION = '1.5.6';
   var deferredInstallPrompt = null;
 
   var $ = function (id) { return document.getElementById(id); };

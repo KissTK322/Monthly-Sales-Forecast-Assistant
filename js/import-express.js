@@ -231,6 +231,22 @@
     const adjustments = depositOnlyMerge ? [...existing.adjustments] : [];
     const unresolved = [];
 
+    /* Files for overlapping periods repeat the same documents. A document
+       number already read from another selected file (or, when only deposits
+       are added, already in the current data) is the same document: keep the
+       first copy, skip the repeat, and count it for the import summary. */
+    const firstFileOf = new Map();
+    let duplicateDocuments = 0;
+    if (depositOnlyMerge) for (const row of existing.adjustments || []) firstFileOf.set('deposit|' + row.document, '(current data)');
+    function isRepeat(kind, number, fileName) {
+      const key = kind + '|' + number;
+      const first = firstFileOf.get(key);
+      if (first === undefined) { firstFileOf.set(key, fileName); return false; }
+      if (first === fileName) return false;
+      duplicateDocuments++;
+      return true;
+    }
+
     function ensureCustomer(id, name) {
       const customerName = clean(name) || clean(id) || 'Unknown customer';
       const customerId = clean(id) || stableId(customerName, 'EXP-C');
@@ -319,6 +335,7 @@
       document.rows.forEach((row, index) => {
         const date = parseThaiDate(row[0]);
         if (date && /^HS/i.test(clean(row[1]))) {
+          if (isRepeat('sale', clean(row[1]), document.name)) { context = null; return; }
           const customer = ensureCustomer(row[2], row[3]);
           context = { type: 'cash', date, invoice: clean(row[1]), customer, salesperson: ensureSalesperson(row[4]) };
           return;
@@ -345,6 +362,7 @@
       document.rows.forEach((row, index) => {
         const date = parseThaiDate(row[0]);
         if (date && /^IV/i.test(clean(row[1]))) {
+          if (isRepeat('sale', clean(row[1]), document.name)) { context = null; return; }
           const customerName = clean(row[2]);
           const existingId = customerByName.get(customerName.toLowerCase());
           const customer = ensureCustomer(existingId || stableId(customerName, 'EXP-C'), customerName);
@@ -381,6 +399,7 @@
         const documentNumber = clean(row[1]);
         const date = parseThaiDate(row[2]);
         if (customer && /^AI/i.test(documentNumber) && date) {
+          if (isRepeat('deposit', documentNumber, document.name)) return;
           adjustments.push({
             id: `EXP-A-${adjustments.length + 1}`,
             kind: 'deposit',
@@ -415,6 +434,7 @@
           format: 'express-csv',
           files: [...(existing.importSummary?.files || []), ...recognized.map(document => ({ name: document.name, type: document.type }))],
           unresolvedRows: [...(existing.importSummary?.unresolvedRows || []), ...unresolved],
+          duplicateDocuments,
         },
       };
     }
@@ -439,6 +459,7 @@
         format: 'express-csv',
         files: recognized.map(document => ({ name: document.name, type: document.type })),
         unresolvedRows: unresolved,
+        duplicateDocuments,
       },
     };
   }

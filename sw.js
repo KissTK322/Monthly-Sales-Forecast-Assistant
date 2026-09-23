@@ -6,7 +6,7 @@
  * Files the user chooses (the Express CSV reports) never pass through this
  * worker: they are read from a File object in the page.
  */
-const VERSION = '1.2.0';
+const VERSION = '1.5.6';
 const CACHE = `monthly-forecast-${VERSION}`;
 
 const APP_FILES = [
@@ -17,13 +17,11 @@ const APP_FILES = [
   './js/engine.js',
   './js/import-express.js',
   './js/predictions.js',
+  './js/motion.js',
+  './js/export.js',
   './js/app.js',
   './js/pwa.js',
   './assets/client-logo.png',
-  './assets/fonts/chakra-petch-400.ttf',
-  './assets/fonts/chakra-petch-500.ttf',
-  './assets/fonts/chakra-petch-600.ttf',
-  './assets/fonts/chakra-petch-700.ttf',
   './icons/apple-touch-icon.png',
   './icons/favicon-32.png',
   './icons/icon-192.png',

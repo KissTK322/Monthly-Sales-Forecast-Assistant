@@ -215,13 +215,47 @@
       const priorMonths = calendar.slice(i - window, i);
       const predicted = weightedRate(totals, priorMonths) * daysInMonth(targetMonth);
       const actual = totals.get(targetMonth) || 0;
-      results.push({ month: targetMonth, actual, predicted });
+      /* naive = last month's actual, the benchmark MASE compares against. */
+      const naive = totals.get(calendar[i - 1]) || 0;
+      results.push({ month: targetMonth, actual, predicted, naive });
     }
     const denominator = results.reduce((sum, r) => sum + r.actual, 0);
     const wape = results.length && denominator > 0
       ? results.reduce((sum, r) => sum + Math.abs(r.actual - r.predicted), 0) / denominator
       : results.length ? 0 : null;
     return { results, n: results.length, wape, window };
+  }
+
+  /* ---------- accuracy metrics (reported beside WAPE, never used to choose) ----------
+   * All from the same backtest months. error = predicted - actual.
+   *   wape  sum|error| / sum actual                (headline; same as backtest())
+   *   mape  mean |error| / actual, months with actual > 0 only; mapeSkipped counts the rest
+   *   mae   mean |error|, in the series unit
+   *   rmse  sqrt(mean error^2), in the series unit; punishes big misses
+   *   bias  sum error / sum actual; + means the method forecast too much
+   *   mase  mae / mae of "last month's actual"; < 1 means better than that naive guess
+   */
+  function accuracyMetrics(results) {
+    if (!results || !results.length) return null;
+    const n = results.length;
+    const errors = results.map((r) => r.predicted - r.actual);
+    const sumActual = results.reduce((sum, r) => sum + r.actual, 0);
+    const sumAbs = errors.reduce((sum, e) => sum + Math.abs(e), 0);
+    const withActual = results.filter((r) => r.actual > 0);
+    const mae = sumAbs / n;
+    const naiveMae = results.every((r) => typeof r.naive === 'number')
+      ? results.reduce((sum, r) => sum + Math.abs(r.actual - r.naive), 0) / n
+      : null;
+    return {
+      n,
+      wape: sumActual > 0 ? sumAbs / sumActual : 0,
+      mape: withActual.length ? withActual.reduce((sum, r) => sum + Math.abs(r.predicted - r.actual) / r.actual, 0) / withActual.length : null,
+      mapeSkipped: n - withActual.length,
+      mae,
+      rmse: Math.sqrt(errors.reduce((sum, e) => sum + e * e, 0) / n),
+      bias: sumActual > 0 ? errors.reduce((sum, e) => sum + e, 0) / sumActual : null,
+      mase: naiveMae !== null && naiveMae > 0 ? mae / naiveMae : null,
+    };
   }
 
   /* ---------- grading ---------- */
@@ -287,7 +321,7 @@
     const ratePerDay = weightedRate(totals, recentMonths) * trendFactor(series, cutoffDate);
     const value = ratePerDay * daysInMonth(targetMonth);
 
-    return { ...base, ratePerDay, value, wape, grade: forecastGrade, window: chosen.window, reason: null };
+    return { ...base, ratePerDay, value, wape, grade: forecastGrade, window: chosen.window, reason: null, backtestResults: chosen.result.results, accuracy: accuracyMetrics(chosen.result.results) };
   }
 
   /* ---------- seasonality (present, switched off) ---------- */
@@ -341,7 +375,7 @@
   const Predictions = {
     daysInMonth, monthEnd, shiftMonth, daysBetween,
     buildSeries, rateBetween, daysOfCover,
-    demandClass, trendFactor, backtest, grade, forecastNextMonth,
+    demandClass, trendFactor, backtest, accuracyMetrics, grade, forecastNextMonth,
     seasonalIndex, suspectedDuplicates, bestSellers,
   };
 
